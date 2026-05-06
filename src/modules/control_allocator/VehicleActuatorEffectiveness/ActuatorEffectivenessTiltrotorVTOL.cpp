@@ -130,6 +130,22 @@ void ActuatorEffectivenessTiltrotorVTOL::overrideCollectiveTilt(bool do_override
 	// _collective_tilt_normalized_setpoint instead of the uORB message and
 	// drives the tilt actuators even when motors are not yet spooled up. Used
 	// by the actuator-group preflight check.
+
+	// TODO: revise. This is a pretty hacky way to pass around the
+	// collective tilt setpoint.
+
+	// The main flaw is that overrideCollectiveTilt(false, ...) is
+	// explicitly needed to clear the override.
+
+	// Ideally we would send a separate tiltrotor_extra_controls style
+	// message that contains a flag which enables the necessary override
+	// here, and stop the override if only the usual tiltrotor controls
+	// arrive.
+
+	// But tiltrotor_extra_controls is a hack in the first place and I am
+	// noting this technical debt for the time when it is replaced by a
+	// better way.
+
 	_do_override_collective_tilt = do_override;
 	_collective_tilt_normalized_setpoint = collective_tilt;
 }
