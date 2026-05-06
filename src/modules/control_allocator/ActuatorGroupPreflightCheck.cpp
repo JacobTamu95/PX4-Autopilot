@@ -164,9 +164,7 @@ void ActuatorGroupPreflightCheck::updateState(hrt_abstime now)
 		}
 	}
 
-	const hrt_abstime duration = isThrust(_group) ? PREFLIGHT_CHECK_DURATION_THRUST : PREFLIGHT_CHECK_DURATION_SERVOS;
-
-	if (now - _started >= duration) {
+	if (now - _started >= PREFLIGHT_CHECK_DURATION) {
 		_running = false;
 		sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_ACCEPTED, now);
 	}

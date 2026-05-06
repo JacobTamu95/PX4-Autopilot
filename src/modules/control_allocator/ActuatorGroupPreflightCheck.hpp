@@ -81,9 +81,7 @@ public:
 			    ActuatorEffectiveness &effectiveness);
 
 private:
-	static constexpr hrt_abstime PREFLIGHT_CHECK_DURATION_SERVOS = 500'000;  // 500 ms
-	// A bit longer since FW forward thrust can have significant slew rate
-	static constexpr hrt_abstime PREFLIGHT_CHECK_DURATION_THRUST = 2'000'000;  // 2 s
+	static constexpr hrt_abstime PREFLIGHT_CHECK_DURATION = 500'000;  // 500 ms
 
 	static bool isThrust(uint8_t group);
 	static bool isKnownGroup(uint8_t group);
