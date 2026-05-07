@@ -77,20 +77,11 @@ const char *ActuatorGroupPreflightCheck::validateCommand(uint8_t group, bool is_
 	// Genuine internal failure: we could not read the state we need
 	ack_result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_FAILED;
 
-	actuator_armed_s actuator_armed;
-
-	if (!_armed_sub.copy(&actuator_armed)) {
-		return "failed to read armed state";
-	}
-
-	vehicle_land_detected_s vehicle_land_detected;
-
-	if (!_vehicle_land_detected_sub.copy(&vehicle_land_detected)) {
-		return "failed to read landed state";
-	}
-
 	// Transient: arming state mismatch. The user can change it and retry.
 	ack_result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_TEMPORARILY_REJECTED;
+
+	actuator_armed_s actuator_armed{};
+	_armed_sub.copy(&actuator_armed);
 
 	if (isThrust(group)) {
 
@@ -110,6 +101,9 @@ const char *ActuatorGroupPreflightCheck::validateCommand(uint8_t group, bool is_
 	}
 
 	// Transient: landed state mismatch
+	vehicle_land_detected_s vehicle_land_detected{};
+	_vehicle_land_detected_sub.copy(&vehicle_land_detected);
+
 	if (!vehicle_land_detected.landed) {
 		return "not landed";
 	}
@@ -160,8 +154,8 @@ void ActuatorGroupPreflightCheck::updateState(hrt_abstime now)
 {
 	if (!_running) { return; }
 
-	actuator_armed_s actuator_armed;
-	vehicle_land_detected_s vehicle_land_detected;
+	actuator_armed_s actuator_armed{};
+	vehicle_land_detected_s vehicle_land_detected{};
 
 	if (_armed_sub.copy(&actuator_armed) && _vehicle_land_detected_sub.copy(&vehicle_land_detected)) {
 
