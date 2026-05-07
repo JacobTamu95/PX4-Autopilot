@@ -84,7 +84,7 @@ public:
 			    ActuatorEffectiveness &effectiveness);
 
 private:
-	static constexpr hrt_abstime PREFLIGHT_CHECK_DURATION = 500'000;  // 500 ms
+	static constexpr hrt_abstime PREFLIGHT_CHECK_DURATION_US = 500'000;  // 500 ms
 
 	static bool isThrust(uint8_t group);
 	static bool isKnownGroup(uint8_t group);

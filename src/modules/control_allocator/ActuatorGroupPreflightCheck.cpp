@@ -168,7 +168,7 @@ void ActuatorGroupPreflightCheck::updateState(hrt_abstime now)
 		}
 	}
 
-	if (now - _started >= PREFLIGHT_CHECK_DURATION) {
+	if (now >= _started + PREFLIGHT_CHECK_DURATION_US) {
 		_running = false;
 		sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_ACCEPTED, now);
 	}
