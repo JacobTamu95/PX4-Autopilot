@@ -109,7 +109,6 @@ private:
 
 	// These describe the currently running check, only set when started
 	uint8_t _group{0};
-	bool _requires_armed{false};
 	float _input{0.0f};
 	hrt_abstime _started{0};
 	uint8_t _started_nav_state{};

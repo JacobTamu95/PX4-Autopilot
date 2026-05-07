@@ -88,12 +88,8 @@ const char *ActuatorGroupPreflightCheck::validateCommand(uint8_t group, bool is_
 
 	} else {
 
-		if (actuator_armed.armed) {
-			return "armed";
-		}
-
-		if (!actuator_armed.prearmed) {
-			return "not prearmed";
+		if (!actuator_armed.prearmed && !actuator_armed.armed) {
+			return "not (pre)armed";
 		}
 	}
 
@@ -141,7 +137,6 @@ void ActuatorGroupPreflightCheck::handleCommand(hrt_abstime now, bool is_tiltrot
 	const float min_input = group == vehicle_command_s::ACTUATOR_TEST_GROUP_COLLECTIVE_TILT ? 0.f : -1.f;
 
 	_group = group;
-	_requires_armed = isThrust(group);
 	_input = math::constrain(vehicle_command.param2, min_input, 1.f);
 	_started = now;
 	_started_nav_state = vehicle_status.nav_state;
@@ -164,14 +159,15 @@ void ActuatorGroupPreflightCheck::updateState(hrt_abstime now)
 	    && _vehicle_land_detected_sub.copy(&vehicle_land_detected)
 	    && _vehicle_status_sub.copy(&vehicle_status)) {
 
-		// Cancel if any of the conditions we depended on at start are lost
-		// (thrust -> armed, torque/tilt -> pre-armed, always !landed),
-		// or when the nav_state changes (safety measure).
-		const bool armed_lost = actuator_armed.armed != _requires_armed;
-		const bool prearmed_lost = !_requires_armed && !actuator_armed.prearmed;
+		// Cancel if any of the conditions we depend on are lost (thrust -> armed,
+		// torque/tilt -> pre-armed or armed, always !landed), or when nav_state
+		// changes (safety measure).
+		const bool is_thrust = isThrust(_group);
+		const bool armed_requirement_lost = is_thrust && !actuator_armed.armed;
+		const bool prearmed_requirement_lost = !is_thrust && (!actuator_armed.prearmed && !actuator_armed.armed);
 		const bool nav_state_changed = vehicle_status.nav_state != _started_nav_state;
 
-		if (armed_lost || prearmed_lost || !vehicle_land_detected.landed || nav_state_changed) {
+		if (armed_requirement_lost || prearmed_requirement_lost || !vehicle_land_detected.landed || nav_state_changed) {
 			_running = false;
 			sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_CANCELLED, now);
 			return;
