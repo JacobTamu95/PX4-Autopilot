@@ -134,6 +134,9 @@ void ActuatorGroupPreflightCheck::handleCommand(hrt_abstime now, bool is_tiltrot
 		sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_CANCELLED, now);
 	}
 
+	vehicle_status_s vehicle_status{};
+	_vehicle_status_sub.copy(&vehicle_status);
+
 	// Torque and thrust have inputs in [-1, 1]. Tilt expects [0, 1] (0=vertical, 1=horizontal);
 	const float min_input = group == vehicle_command_s::ACTUATOR_TEST_GROUP_COLLECTIVE_TILT ? 0.f : -1.f;
 
@@ -141,9 +144,11 @@ void ActuatorGroupPreflightCheck::handleCommand(hrt_abstime now, bool is_tiltrot
 	_requires_armed = isThrust(group);
 	_input = math::constrain(vehicle_command.param2, min_input, 1.f);
 	_started = now;
+	_started_nav_state = vehicle_status.nav_state;
+	_last_command = vehicle_command;
+
 	_running = true;
 
-	_last_command = vehicle_command;
 	sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_IN_PROGRESS, now);
 }
 
@@ -153,15 +158,20 @@ void ActuatorGroupPreflightCheck::updateState(hrt_abstime now)
 
 	actuator_armed_s actuator_armed{};
 	vehicle_land_detected_s vehicle_land_detected{};
+	vehicle_status_s vehicle_status{};
 
-	if (_armed_sub.copy(&actuator_armed) && _vehicle_land_detected_sub.copy(&vehicle_land_detected)) {
+	if (_armed_sub.copy(&actuator_armed)
+	    && _vehicle_land_detected_sub.copy(&vehicle_land_detected)
+	    && _vehicle_status_sub.copy(&vehicle_status)) {
 
 		// Cancel if any of the conditions we depended on at start are lost
-		// (thrust -> armed, torque/tilt -> pre-armed, always !landed).
+		// (thrust -> armed, torque/tilt -> pre-armed, always !landed),
+		// or when the nav_state changes (safety measure).
 		const bool armed_lost = actuator_armed.armed != _requires_armed;
 		const bool prearmed_lost = !_requires_armed && !actuator_armed.prearmed;
+		const bool nav_state_changed = vehicle_status.nav_state != _started_nav_state;
 
-		if (armed_lost || prearmed_lost || !vehicle_land_detected.landed) {
+		if (armed_lost || prearmed_lost || !vehicle_land_detected.landed || nav_state_changed) {
 			_running = false;
 			sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_CANCELLED, now);
 			return;

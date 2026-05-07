@@ -49,6 +49,7 @@
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_command_ack.h>
 #include <uORB/topics/vehicle_land_detected.h>
+#include <uORB/topics/vehicle_status.h>
 
 /**
  * Drives the VEHICLE_CMD_ACTUATOR_GROUP_TEST state machine: holds a fixed
@@ -100,12 +101,17 @@ private:
 	uORB::Subscription _vehicle_command_sub{ORB_ID(vehicle_command)};
 	uORB::Subscription _armed_sub{ORB_ID(actuator_armed)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
+	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
+
 	uORB::Publication<vehicle_command_ack_s> _command_ack_pub{ORB_ID(vehicle_command_ack)};
 
 	bool _running{false};
-	bool _requires_armed{false};
+
+	// These describe the currently running check, only set when started
 	uint8_t _group{0};
+	bool _requires_armed{false};
 	float _input{0.0f};
-	vehicle_command_s _last_command{};
 	hrt_abstime _started{0};
+	uint8_t _started_nav_state{};
+	vehicle_command_s _last_command{};
 };
