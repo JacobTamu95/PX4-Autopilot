@@ -44,18 +44,21 @@
 
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
+
 #include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_command_ack.h>
+#include <uORB/topics/vehicle_land_detected.h>
 
 /**
  * Drives the VEHICLE_CMD_ACTUATOR_GROUP_TEST state machine: holds a fixed
  * torque, thrust or collective tilt on a single functional group for a short
  * duration so the operator can verify actuator motion before flight.
  *
- * Arming requirements (enforced both at start and continuously while running):
+ * Pre-conditions (enforced at start, cancelled if not given while running):
  *  - torque and collective-tilt groups: prearmed and *not* armed
  *  - thrust groups: armed
+ *  - landed
  *
  * Losing the required state mid-check results in a CANCELLED ack.
  */
@@ -96,6 +99,7 @@ private:
 
 	uORB::Subscription _vehicle_command_sub{ORB_ID(vehicle_command)};
 	uORB::Subscription _armed_sub{ORB_ID(actuator_armed)};
+	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 	uORB::Publication<vehicle_command_ack_s> _command_ack_pub{ORB_ID(vehicle_command_ack)};
 
 	bool _running{false};
