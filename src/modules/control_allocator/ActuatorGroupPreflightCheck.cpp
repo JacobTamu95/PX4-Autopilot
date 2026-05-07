@@ -74,9 +74,6 @@ const char *ActuatorGroupPreflightCheck::validateCommand(uint8_t group, bool is_
 		return "not a tiltrotor";
 	}
 
-	// Genuine internal failure: we could not read the state we need
-	ack_result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_FAILED;
-
 	// Transient: arming state mismatch. The user can change it and retry.
 	ack_result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_TEMPORARILY_REJECTED;
 
