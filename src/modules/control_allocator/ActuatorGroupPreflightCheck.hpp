@@ -57,7 +57,7 @@
  * duration so the operator can verify actuator motion before flight.
  *
  * Pre-conditions (enforced at start, cancelled if not given while running):
- *  - torque and collective-tilt groups: prearmed and *not* armed
+ *  - torque and collective tilt groups: prearmed or armed
  *  - thrust groups: armed
  *  - landed
  *
