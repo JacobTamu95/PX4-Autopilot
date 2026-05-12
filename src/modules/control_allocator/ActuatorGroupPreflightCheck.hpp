@@ -96,8 +96,6 @@ private:
 	// On rejection, also writes the appropriate VEHICLE_CMD_RESULT_* into ack_result.
 	const char *validateCommand(uint8_t group, bool is_tiltrotor, uint8_t &ack_result);
 
-	void sendAck(const vehicle_command_s &cmd, uint8_t result, hrt_abstime now);
-
 	uORB::Subscription _vehicle_command_sub{ORB_ID(vehicle_command)};
 	uORB::Subscription _armed_sub{ORB_ID(actuator_armed)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
@@ -105,12 +103,16 @@ private:
 
 	uORB::Publication<vehicle_command_ack_s> _command_ack_pub{ORB_ID(vehicle_command_ack)};
 
-	bool _running{false};
+	void start(hrt_abstime now, uint8_t group, float input, uint8_t nav_state, const vehicle_command_s &cmd);
+	void stop(uint8_t result, hrt_abstime now);
+	void sendAck(const vehicle_command_s &cmd, uint8_t result, hrt_abstime now);
 
-	// These describe the currently running check, only set when started
-	uint8_t _group{0};
-	float _input{0.0f};
-	hrt_abstime _started{0};
-	uint8_t _started_nav_state{};
-	vehicle_command_s _last_command{};
+	bool _running{false};
+	struct ActiveCheck {
+		uint8_t           group;
+		float             input;
+		hrt_abstime       started;
+		uint8_t           started_nav_state;
+		vehicle_command_s last_command;
+	} _active_check{};
 };

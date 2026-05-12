@@ -114,37 +114,31 @@ void ActuatorGroupPreflightCheck::handleCommand(hrt_abstime now, bool is_tiltrot
 
 	const uint8_t group = (uint8_t) lroundf(vehicle_command.param1);
 
+	// Torque and thrust have inputs in [-1, 1]. Tilt expects [0, 1] (0=vertical, 1=horizontal);
+	const float min_input = group == vehicle_command_s::ACTUATOR_TEST_GROUP_COLLECTIVE_TILT ? 0.f : -1.f;
+
+	const float input = math::constrain(vehicle_command.param2, min_input, 1.f);
+
 	uint8_t reject_result;  // Is written to by validateCommand
 	const char *reject_reason = validateCommand(group, is_tiltrotor, reject_result);
 
 	if (reject_reason) {
 		PX4_WARN("Actuator group preflight check rejected (%s)", reject_reason);
-		// Ack the rejected command directly without changing _last_command, so any check
-		// currently running can still respond to its own requester.
+
+		// Ack the rejected command directly without affecting any running check.
 		sendAck(vehicle_command, reject_result, now);
 		return;
 	}
 
 	if (_running) {
 		// Cancel the previous check, still targeted at its original requester.
-		sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_CANCELLED, now);
+		stop(vehicle_command_ack_s::VEHICLE_CMD_RESULT_CANCELLED, now);
 	}
 
 	vehicle_status_s vehicle_status{};
 	_vehicle_status_sub.copy(&vehicle_status);
 
-	// Torque and thrust have inputs in [-1, 1]. Tilt expects [0, 1] (0=vertical, 1=horizontal);
-	const float min_input = group == vehicle_command_s::ACTUATOR_TEST_GROUP_COLLECTIVE_TILT ? 0.f : -1.f;
-
-	_group = group;
-	_input = math::constrain(vehicle_command.param2, min_input, 1.f);
-	_started = now;
-	_started_nav_state = vehicle_status.nav_state;
-	_last_command = vehicle_command;
-
-	_running = true;
-
-	sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_IN_PROGRESS, now);
+	start(now, group, input, vehicle_status.nav_state, vehicle_command);
 }
 
 void ActuatorGroupPreflightCheck::updateState(hrt_abstime now)
@@ -162,21 +156,19 @@ void ActuatorGroupPreflightCheck::updateState(hrt_abstime now)
 		// Cancel if any of the conditions we depend on are lost (thrust -> armed,
 		// torque/tilt -> pre-armed or armed, always !landed), or when nav_state
 		// changes (safety measure).
-		const bool is_thrust = isThrust(_group);
+		const bool is_thrust = isThrust(_active_check.group);
 		const bool armed_requirement_lost = is_thrust && !actuator_armed.armed;
 		const bool prearmed_requirement_lost = !is_thrust && (!actuator_armed.prearmed && !actuator_armed.armed);
-		const bool nav_state_changed = vehicle_status.nav_state != _started_nav_state;
+		const bool nav_state_changed = vehicle_status.nav_state != _active_check.started_nav_state;
 
 		if (armed_requirement_lost || prearmed_requirement_lost || !vehicle_land_detected.landed || nav_state_changed) {
-			_running = false;
-			sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_CANCELLED, now);
+			stop(vehicle_command_ack_s::VEHICLE_CMD_RESULT_CANCELLED, now);
 			return;
 		}
 	}
 
-	if (now >= _started + PREFLIGHT_CHECK_DURATION_US) {
-		_running = false;
-		sendAck(_last_command, vehicle_command_ack_s::VEHICLE_CMD_RESULT_ACCEPTED, now);
+	if (now >= _active_check.started + PREFLIGHT_CHECK_DURATION_US) {
+		stop(vehicle_command_ack_s::VEHICLE_CMD_RESULT_ACCEPTED, now);
 	}
 }
 
@@ -187,7 +179,7 @@ void ActuatorGroupPreflightCheck::applyOverrides(matrix::Vector<float, NUM_AXES>
 	int override_index = -1;
 
 	// Map vehicle command constants to indices of the c matrix used in ControlAllocator
-	switch (_group) {
+	switch (_active_check.group) {
 	case vehicle_command_s::ACTUATOR_TEST_GROUP_ROLL_TORQUE:
 		override_index = 0; break;
 
@@ -213,13 +205,27 @@ void ActuatorGroupPreflightCheck::applyOverrides(matrix::Vector<float, NUM_AXES>
 
 	// Always update tilt override, even when not running. We need an
 	// explicit call with do_override_tilt = false to undo the override.
-	effectiveness.overrideCollectiveTilt(do_override_tilt, _input);
+	effectiveness.overrideCollectiveTilt(do_override_tilt, _active_check.input);
 
 	if (_running && override_index >= 0) {
 		// On a VTOL, control surfaces are in instance 1; thrust always lives in instance 0.
-		const int instance = (is_vtol && !isThrust(_group)) ? 1 : 0;
-		c[instance](override_index) = _input;
+		const int instance = (is_vtol && !isThrust(_active_check.group)) ? 1 : 0;
+		c[instance](override_index) = _active_check.input;
 	}
+}
+
+void ActuatorGroupPreflightCheck::start(hrt_abstime now, uint8_t group, float input, uint8_t nav_state,
+					const vehicle_command_s &cmd)
+{
+	_active_check = {group, input, now, nav_state, cmd};
+	_running = true;
+	sendAck(cmd, vehicle_command_ack_s::VEHICLE_CMD_RESULT_IN_PROGRESS, now);
+}
+
+void ActuatorGroupPreflightCheck::stop(uint8_t result, hrt_abstime now)
+{
+	_running = false;
+	sendAck(_active_check.last_command, result, now);
 }
 
 void ActuatorGroupPreflightCheck::sendAck(const vehicle_command_s &cmd, uint8_t result, hrt_abstime now)
