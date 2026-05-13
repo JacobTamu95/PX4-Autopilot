@@ -453,6 +453,9 @@ void MissionBase::update_mission()
 		/* reset work item if new mission has been accepted */
 		_work_item_type = WorkItemType::WORK_ITEM_TYPE_DEFAULT;
 
+		/* re-evaluate climb requirement against the new current item */
+		checkClimbRequired(_mission.current_seq);
+
 		/* reset mission failure if we have an updated valid mission */
 		_navigator->get_mission_result()->failure = false;
 
