@@ -104,6 +104,14 @@ if [ -n "${PX4_HOME_LAT}" ] || [ -n "${PX4_HOME_LON}" ] || [ -n "${PX4_HOME_ALT}
 		--req "surface_model: EARTH_WGS84, latitude_deg: ${PX4_HOME_LAT}, longitude_deg: ${PX4_HOME_LON}, elevation: ${PX4_HOME_ALT}" > /dev/null 2>&1
 fi
 
+# Optional pre-spawn delay: gives heavy worlds (Fuel downloads, large
+# meshes) time to fully load before injecting the vehicle. Set the
+# PX4_GZ_PRE_SPAWN_DELAY env var to a number of seconds. No-op if unset.
+if [ -n "${PX4_GZ_PRE_SPAWN_DELAY}" ]; then
+	echo "INFO  [init] Pre-spawn delay: ${PX4_GZ_PRE_SPAWN_DELAY}s"
+	sleep "${PX4_GZ_PRE_SPAWN_DELAY}"
+fi
+
 # Start gz_bridge - either spawn a model or connect to existing one
 if [ -n "${PX4_SIM_MODEL#*gz_}" ] && [ -z "${PX4_GZ_MODEL_NAME}" ]; then
 	# Spawn a model
