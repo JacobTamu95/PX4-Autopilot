@@ -58,6 +58,8 @@ if(PX4_PLATFORM MATCHES "posix")
 		standard_vtol
 		hex
 		rover_ackermann
+		grazer
+		hld
 	)
 
 	# find corresponding airframes
