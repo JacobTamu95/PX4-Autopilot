@@ -42,3 +42,11 @@
 
 #define DMAMAP_SPI5_RX    DMAMAP_DMA12_SPI5RX_0 /* DMA1:83 */
 #define DMAMAP_SPI5_TX    DMAMAP_DMA12_SPI5TX_0 /* DMA1:84 */
+
+// DMAMUX1 -> DMA2 (previously unused): UART transmit DMA on the TELEM ports.
+// Without these every transmitted byte costs one interrupt, and sustained
+// TELEM traffic (uXRCE-DDS / MAVLink at 921600) corrupts in-flight SPI1/SPI5
+// DMA reads of the IMUs (grazer10 accel error investigation, Sep 2026).
+#define DMAMAP_USART2_TX   DMAMAP_DMA12_USART2TX_1 /* DMA2:44 TELEM1 */
+#define DMAMAP_USART3_TX   DMAMAP_DMA12_USART3TX_1 /* DMA2:46 TELEM2 */
+#define DMAMAP_UART7_TX    DMAMAP_DMA12_UART7TX_1  /* DMA2:80 TELEM3 */
