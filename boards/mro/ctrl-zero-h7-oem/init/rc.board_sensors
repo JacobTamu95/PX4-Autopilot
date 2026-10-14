@@ -2,7 +2,16 @@
 #
 # board specific sensors init
 #------------------------------------------------------------------------------
-board_adc start
+
+if param compare SENS_EN_INA220 1
+then
+	# Start Digital power monitors
+	# ina220 -X -b 1 -a 0x41 -T VBATT -k start
+	ina220 -X -b 1 -a 0x44 -T VBATT -k start
+	ina220 -X -b 1 -a 0x45 -T VREG -k start
+else
+	board_adc start
+fi
 
 # Internal ICM-20602
 icm20602 -s -b 1 -R 8 start
