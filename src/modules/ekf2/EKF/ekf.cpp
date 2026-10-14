@@ -115,6 +115,7 @@ void Ekf::reset()
 
 #if defined(CONFIG_EKF2_BAROMETER)
 	_baro_counter = 0;
+	resetBaroSettled();
 #endif // CONFIG_EKF2_BAROMETER
 
 #if defined(CONFIG_EKF2_MAGNETOMETER)

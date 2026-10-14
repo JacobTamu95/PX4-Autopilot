@@ -652,6 +652,14 @@ private:
 	AlphaFilter<float> _baro_lpf{_dt_ekf_avg, _kSensorLpfTimeConstant};	///< filtered barometric height measurement (m)
 	uint32_t _baro_counter{0};		///< number of baro samples read during initialisation
 
+	// baro settling check, run before the baro height offset is first latched
+	bool _baro_settled{false};		///< true once the baro has passed the settling check (latched until reset)
+	float _baro_settle_mean{0.f};		///< 1 s running mean of baro height (m)
+	float _baro_settle_var{0.f};		///< running variance of baro height about _baro_settle_mean (m**2)
+	uint64_t _baro_settle_first_us{0};	///< time of the first baro sample seen by the check (uSec)
+	uint64_t _baro_settle_last_us{0};	///< time of the previous baro sample seen by the check (uSec)
+	uint64_t _baro_settle_quiet_us{0};	///< time the spread last went below threshold, 0 while above (uSec)
+
 	HeightBiasEstimator _baro_b_est{HeightSensor::BARO, _height_sensor_ref};
 
 #endif // CONFIG_EKF2_BAROMETER
@@ -1019,6 +1027,8 @@ private:
 
 #if defined(CONFIG_EKF2_BAROMETER)
 	void controlBaroHeightFusion(const imuSample &imu_sample);
+	bool updateBaroSettled(const baroSample &baro_sample, float measurement);
+	void resetBaroSettled();
 	void stopBaroHgtFusion();
 
 	void updateGroundEffect();

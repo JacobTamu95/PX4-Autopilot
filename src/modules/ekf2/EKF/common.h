@@ -345,6 +345,9 @@ struct parameters {
 	float ekf2_baro_noise{2.0f};            ///< observation noise for barometric height fusion (m)
 	float baro_bias_nsd{0.13f};             ///< process noise for barometric height bias estimation (m/s/sqrt(Hz))
 	float ekf2_baro_gate{5.0f};             ///< barometric and GPS height innovation consistency gate size (STD)
+	float ekf2_baro_stb_sd{0.5f};           ///< baro must stay below this spread before it is first used, 0 disables the check (m)
+	float ekf2_baro_stb_t{5.0f};            ///< how long the baro spread must stay below ekf2_baro_stb_sd (s)
+	float ekf2_baro_stb_to{30.0f};          ///< use the baro anyway if it has not settled after this long (s)
 
 	float ekf2_gnd_eff_dz{5.0f};            ///< Size of deadzone applied to negative baro innovations when ground effect compensation is active (m)
 	float ekf2_gnd_max_hgt{0.5f};           ///< Height above ground at which baro ground effect becomes insignificant (m)

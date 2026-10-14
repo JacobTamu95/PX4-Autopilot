@@ -30,6 +30,45 @@ parameters:
       min: 1.0
       unit: SD
       decimal: 1
+    EKF2_BARO_STB_SD:
+      description:
+        short: Baro settling threshold
+        long: Before barometric height is used for the first time, the EKF waits
+          for the barometer to settle. Settled means the spread of the baro height
+          about its own 1 s running mean has stayed below this value for EKF2_BARO_STB_T
+          seconds. Until then the baro height offset is not latched, so a startup
+          step or fast drift in the baro cannot end up in the height reference. Only
+          checked before the first use. Set to 0 to disable.
+      type: float
+      default: 0.5
+      min: 0.0
+      max: 10.0
+      unit: m
+      decimal: 2
+    EKF2_BARO_STB_T:
+      description:
+        short: Baro settling hold time
+        long: How long the baro spread must stay below EKF2_BARO_STB_SD before the
+          baro is declared settled. Keep this longer than the delay between the EKF's
+          first baro sample and the startup baro step (about 2 s on the mRo Control
+          Zero H7), or the check can pass before the step arrives.
+      type: float
+      default: 5.0
+      min: 0.5
+      max: 30.0
+      unit: s
+      decimal: 1
+    EKF2_BARO_STB_TO:
+      description:
+        short: Baro settling timeout
+        long: If the baro has not settled this long after its first sample, it is
+          used anyway (stock behaviour).
+      type: float
+      default: 30.0
+      min: 5.0
+      max: 300.0
+      unit: s
+      decimal: 0
     EKF2_BARO_NOISE:
       description:
         short: Measurement noise for barometric altitude

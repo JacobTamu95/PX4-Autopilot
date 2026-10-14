@@ -585,6 +585,9 @@ private:
 		(ParamExtFloat<px4::params::EKF2_BARO_DELAY>) _param_ekf2_baro_delay,
 		(ParamExtFloat<px4::params::EKF2_BARO_NOISE>) _param_ekf2_baro_noise,
 		(ParamExtFloat<px4::params::EKF2_BARO_GATE>) _param_ekf2_baro_gate,
+		(ParamExtFloat<px4::params::EKF2_BARO_STB_SD>) _param_ekf2_baro_stb_sd,
+		(ParamExtFloat<px4::params::EKF2_BARO_STB_T>) _param_ekf2_baro_stb_t,
+		(ParamExtFloat<px4::params::EKF2_BARO_STB_TO>) _param_ekf2_baro_stb_to,
 		(ParamExtFloat<px4::params::EKF2_GND_EFF_DZ>) _param_ekf2_gnd_eff_dz,
 		(ParamExtFloat<px4::params::EKF2_GND_MAX_HGT>) _param_ekf2_gnd_max_hgt,
 

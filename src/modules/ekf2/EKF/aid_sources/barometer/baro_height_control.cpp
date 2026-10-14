@@ -74,7 +74,12 @@ void Ekf::controlBaroHeightFusion(const imuSample &imu_sample)
 				_baro_counter++;
 			}
 
-			if (_baro_counter <= _obs_buffer_length) {
+			// Keep re-initialising the pressure offset until the baro has settled. The
+			// offset latched here is what ties the height frame to the baro, so a
+			// startup step or fast drift latched here stays in the frame for good.
+			const bool baro_settled = updateBaroSettled(baro_sample, measurement);
+
+			if ((_baro_counter <= _obs_buffer_length) || !baro_settled) {
 				// Initialize the pressure offset (included in the baro bias)
 				bias_est.setBias(-_gpos.altitude() + _baro_lpf.getState());
 			}
@@ -116,6 +121,7 @@ void Ekf::controlBaroHeightFusion(const imuSample &imu_sample)
 		const bool continuing_conditions_passing = _fc.baro.intended()
 				&& measurement_valid
 				&& (_baro_counter > _obs_buffer_length)
+				&& _baro_settled
 				&& !_control_status.flags.baro_fault;
 
 		const bool starting_conditions_passing = continuing_conditions_passing
@@ -188,6 +194,81 @@ void Ekf::controlBaroHeightFusion(const imuSample &imu_sample)
 		ECL_WARN("stopping %s height fusion, no data", HGT_SRC_NAME);
 		stopBaroHgtFusion();
 	}
+}
+
+bool Ekf::updateBaroSettled(const baroSample &baro_sample, const float measurement)
+{
+	// Latched: once the baro has been used, later noise (prop wash, vibration) must
+	// never take it away again. Only Ekf::reset() clears this.
+	if (_baro_settled) {
+		return true;
+	}
+
+	if (_params.ekf2_baro_stb_sd <= 0.f) {
+		// check disabled: stock behaviour
+		_baro_settled = true;
+		return true;
+	}
+
+	const uint64_t now = baro_sample.time_us;
+
+	if ((_baro_settle_first_us == 0) || baro_sample.reset || (now <= _baro_settle_last_us)) {
+		// first sample, a baro switch or a time jump: start the check again
+		_baro_settle_first_us = now;
+		_baro_settle_last_us = now;
+		_baro_settle_quiet_us = now;
+		_baro_settle_mean = measurement;
+		_baro_settle_var = 0.f;
+		return false;
+	}
+
+	// Exponentially weighted mean and variance with a 1 s time constant. The spread
+	// sqrt(var) responds to both failure shapes seen on this board:
+	//  - a step of S metres jumps it to ~0.24 S (16 Hz baro), then it decays over ~6 s
+	//  - a ramp of r m/s holds it at ~r * 1 s, because the mean lags the ramp
+	static constexpr float BARO_SETTLE_TAU = 1.f; // (s)
+	const float dt = 1e-6f * (float)(now - _baro_settle_last_us);
+	_baro_settle_last_us = now;
+
+	const float alpha = dt / (BARO_SETTLE_TAU + dt);
+	const float dev = measurement - _baro_settle_mean;
+	_baro_settle_mean += alpha * dev;
+	_baro_settle_var = (1.f - alpha) * (_baro_settle_var + alpha * sq(dev));
+
+	const float spread = sqrtf(_baro_settle_var);
+
+	if (spread >= _params.ekf2_baro_stb_sd) {
+		// restart the hold time
+		_baro_settle_quiet_us = 0;
+
+	} else if (_baro_settle_quiet_us == 0) {
+		_baro_settle_quiet_us = now;
+	}
+
+	const uint64_t hold_us = (uint64_t)(1e6f * _params.ekf2_baro_stb_t);
+	const uint64_t timeout_us = (uint64_t)(1e6f * _params.ekf2_baro_stb_to);
+	const float waited_s = 1e-6f * (float)(now - _baro_settle_first_us);
+
+	if ((_baro_settle_quiet_us != 0) && (now - _baro_settle_quiet_us >= hold_us)) {
+		ECL_INFO("baro settled after %.1f s (spread %.2f m)", (double)waited_s, (double)spread);
+		_baro_settled = true;
+
+	} else if (now - _baro_settle_first_us >= timeout_us) {
+		ECL_WARN("baro not settled after %.0f s (spread %.2f m), using it anyway", (double)waited_s, (double)spread);
+		_baro_settled = true;
+	}
+
+	return _baro_settled;
+}
+
+void Ekf::resetBaroSettled()
+{
+	_baro_settled = false;
+	_baro_settle_mean = 0.f;
+	_baro_settle_var = 0.f;
+	_baro_settle_first_us = 0;
+	_baro_settle_last_us = 0;
+	_baro_settle_quiet_us = 0;
 }
 
 void Ekf::stopBaroHgtFusion()
