@@ -123,6 +123,25 @@ publications:
     type: px4_msgs::msg::InputRc
     rate_limit: 10.
 
+  # Lab (mavericks) additions carried over from the v1.14 fork. Rate-limited because
+  # this link (TELEM2) also carries the companion's SE3 setpoints; at the v1.14 fork's
+  # 100 Hz cap actuator_outputs alone took ~37% of it.
+  - topic: /fmu/out/health_report
+    type: px4_msgs::msg::HealthReport
+    rate_limit: 1.
+
+  - topic: /fmu/out/esc_report
+    type: px4_msgs::msg::EscReport
+    rate_limit: 1.
+
+  - topic: /fmu/out/esc_status
+    type: px4_msgs::msg::EscStatus
+    rate_limit: 10.
+
+  - topic: /fmu/out/actuator_outputs
+    type: px4_msgs::msg::ActuatorOutputs
+    rate_limit: 10.
+
 # Create uORB::Publication
 subscriptions:
   - topic: /fmu/in/register_ext_component_request
