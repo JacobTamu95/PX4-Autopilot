@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# @name ARL Grazer XG
+#
+# @type Quadrotor x
+# @class Copter
+#
+# @maintainer Ben Linne <benjamin.linne.civ@mail.mil>
+#
+
+. ${R}etc/init.d/airframes/4190_grazer_x
+
+# Set power module differences in XG
+param set-default SENS_EN_INA220 1       # enable ina220
+param set-default INA220_CUR_BAT 400
+param set-default INA220_SHUNT_BAT 0.000085
+param set-default INA220_CUR_REG 164
+param set-default INA220_SHUNT_REG 0.005
+
+param set-default BAT1_N_CELLS 6
+param set-default BAT1_SOURCE 0          # power module
+param set-default CBRK_SUPPLY_CHK 894281
+
+param set-default BAT1_CAPACITY 7800
+param set-default BAT1_R_INTERNAL 5
+param set-default BAT1_V_CHARGED 4.15

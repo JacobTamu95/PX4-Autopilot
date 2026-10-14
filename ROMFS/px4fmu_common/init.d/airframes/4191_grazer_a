@@ -1,0 +1,143 @@
+#!/bin/sh
+#
+# @name ARL Grazer A
+#
+# @type Quadrotor x
+# @class Copter
+#
+# @maintainer Ben Linne <benjamin.linne.civ@mail.mil>
+#
+
+. ${R}etc/init.d/rc.mc_defaults
+
+# Control Allocation
+param set-default CA_AIRFRAME 0 # Multirotor
+param set-default CA_ROTOR_COUNT 4
+# TODO: set using CG
+param set-default CA_ROTOR0_PX 0.15
+param set-default CA_ROTOR0_PY 0.15
+param set-default CA_ROTOR0_KM 0.05
+param set-default CA_ROTOR1_PX -0.15
+param set-default CA_ROTOR1_PY -0.15
+param set-default CA_ROTOR1_KM 0.05
+param set-default CA_ROTOR2_PX 0.15
+param set-default CA_ROTOR2_PY -0.15
+param set-default CA_ROTOR2_KM -0.05
+param set-default CA_ROTOR3_PX -0.15
+param set-default CA_ROTOR3_PY 0.15
+param set-default CA_ROTOR3_KM -0.05
+
+# Outputs
+param set-default PWM_MAIN_TIM0 -5      # DShot150
+param set-default PWM_MAIN_FUNC1 101
+param set-default PWM_MAIN_FUNC2 102
+param set-default PWM_MAIN_FUNC3 103
+param set-default PWM_MAIN_FUNC4 104
+
+# General params
+param set-default DSHOT_MIN 0.03       # Decrease min throttle to 3%
+param set-default SENS_EN_LL40LS 2     # Enable LIDAR LITE on I2C
+param set-default SDLOG_PROFILE 1      # default logging
+param set-default IMU_GYRO_RATEMAX 2000
+
+# Position controller settings
+param set-default COM_DISARM_LAND 2      # Disarm after landing time
+param set-default COM_DISARM_PRFLT 15    # Disarm time if takeoff too slow
+param set-default MPC_Z_VEL_MAX_DN 1.5
+param set-default MPC_Z_V_AUTO_DN 1.5
+param set-default MPC_LAND_SPEED 0.7
+param set-default MPC_LAND_CRWL 0.3
+param set-default LNDMC_Z_VEL_MAX 0.25 # todo: increase if idle on ground fails
+param set-default MPC_XY_VEL_MAX 12
+param set-default MPC_XY_CRUISE 5
+param set-default MPC_POS_MODE 0       # Simple
+param set-default MPC_MANTHR_MIN 0     # Disabled with airmode enabled
+param set-default MC_AIRMODE 1         # roll/pitch airmode
+
+# Height params
+param set-default EKF2_HGT_REF 1       # GPS
+param set-default EKF2_RNG_CTRL 1      # Range aid enabled (conditional mode)
+param set-default EKF2_RNG_A_HMAX 10   # Max height to fuse range measurements
+param set-default EKF2_RNG_A_VMAX 2    # Max velocity to fuse range measurements
+
+# Failsafe params
+param set-default NAV_RCL_ACT 2        # RC - Return
+param set-default COM_OBL_RC_ACT 3     # Offboard and RC - Return
+param set-default NAV_DLL_ACT 2        # Data Link - Return
+param set-default GF_ACTION 3          # Geofence - Return
+param set-default GF_ALTMODE 0         # Geofence alt set by GPS
+param set-default GF_MAX_VER_DIST 50   # Geofence max alt
+param set-default GF_PREDICT 0         # Disable predictive geofence
+param set-default COM_RC_LOSS_T 0.5    # RC loss timeout
+param set-default COM_RC_OVERRIDE 0    # Disable takeover in auto/offboard
+param set-default COM_OF_LOSS_T 3.0    # Offboard loss timeout
+param set-default COM_DL_LOSS_T 10     # Datalink loss timeout
+param set-default COM_FAIL_ACT_T 0     # Delay between failsafe and reaction
+
+# RTL params
+param set-default RTL_CONE_ANG 45
+param set-default RTL_DESCEND_ALT 10
+param set-default RTL_LAND_DELAY 0.0   #Return mode delay
+param set-default RTL_MIN_DIST 10
+param set-default RTL_RETURN_ALT 35
+
+# PIDs
+param set-default MC_ROLLRATE_K 1.3
+param set-default MC_ROLLRATE_D 0.003
+param set-default MC_ROLLRATE_I 0.1
+param set-default MC_PITCHRATE_K 1.3
+param set-default MC_PITCHRATE_D 0.003
+param set-default MC_PITCHRATE_I 0.1
+param set-default MC_YAWRATE_K 1
+param set-default MC_YAWRATE_I 0.06
+param set-default MC_YAWRATE_MAX 90
+
+# Magnetometer
+param set-default CAL_MAG0_ROT 0         # Default rotation
+param set-default CAL_MAG0_PRIO 50       # Enable external MAG
+param set-default CAL_MAG1_PRIO -1       # Built-in FC mag Uninitalized
+param set-default SENS_MAG_MODE 1        # Publish primary magnetometer
+
+# Mavlink
+param set-default MAV_0_CONFIG 101       # Telem 1
+param set-default MAV_0_MODE 0           # Downgrade to normal
+param set-default SER_TEL1_BAUD 921600   # Mavlink baud-rate
+
+# UXRCE-DDS Client
+param set-default UXRCE_DDS_CFG 102      # Auto-start UXRCE-DDS on Telem 2
+param set-default SER_TEL2_BAUD 921600   # UXRCE-DDS baud-rate
+# keep PX4 in sync with offboard
+param set-default UXRCE_DDS_SYNCT 1
+param set-default UXRCE_DDS_SYNCC 1
+
+# Battery & Dshot telem
+param set-default BAT1_SOURCE 0          # Power Module
+param set-default BAT1_N_CELLS 4
+param set-default BAT1_V_DIV 7.78        # Approximation. Calibration is recommended
+param set-default BAT1_A_PER_V -1        # Disable current monitoring
+param set-default BAT1_CAPACITY -1       # Disable current monitoring
+param set-default BAT1_I_CHANNEL -1      # Disable current monitoring
+param set-default DSHOT_TEL_CFG 103      # Telem 3
+
+# Circuit Breakers
+param set-default CBRK_SUPPLY_CHK 894281 # 5v line reading low
+# param set-default CBRK_BUZZER 782097     # Disable buzzer
+
+# RC
+param set-default RC_INPUT_PROTO 2       # SBUS
+param set-default COM_KILL_DISARM 0      # Kill switch disarm timeout
+param set-default COM_FLTMODE1 8         # Stablizied
+param set-default COM_FLTMODE2 -1
+param set-default COM_FLTMODE3 -1
+param set-default COM_FLTMODE4 2         # Position
+param set-default COM_FLTMODE5 -1
+param set-default COM_FLTMODE6 5         # Return
+param set-default RC_MAP_FLTMODE 5
+param set-default RC_MAP_ARM_SW 6
+param set-default RC_MAP_KILL_SW 7
+param set-default RC_MAP_OFFB_SW 8
+param set-default RC_MAP_PITCH 3         # TAER
+param set-default RC_MAP_ROLL 2
+param set-default RC_MAP_THROTTLE 1
+param set-default RC_MAP_YAW 4
+
