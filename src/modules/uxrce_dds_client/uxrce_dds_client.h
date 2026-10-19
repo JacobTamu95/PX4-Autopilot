@@ -40,6 +40,7 @@
 
 #include <uORB/topics/message_format_request.h>
 #include <uORB/topics/message_format_response.h>
+#include <uORB/topics/dds_link_status.h>
 #include <uORB/Subscription.hpp>
 
 #include <lib/timesync/Timesync.hpp>
@@ -136,6 +137,9 @@ private:
 	void checkConnectivity(uxrSession *session);
 	void resetConnectivityCounters();
 
+	/** Publishes dds_link_status at 1 Hz (link capacity, wire and per-topic usage) */
+	void publishLinkStatus(bool force = false);
+
 	uORB::Publication<message_format_response_s> _message_format_response_pub{ORB_ID(message_format_response)};
 	uORB::Subscription _message_format_request_sub{ORB_ID(message_format_request)};
 
@@ -204,6 +208,19 @@ private:
 	bool _timesync_converged{false};
 
 	Timesync _timesync{timesync_status_s::SOURCE_PROTOCOL_DDS};
+
+	// dds_link_status bookkeeping: counter values at the previous publication
+	uORB::Publication<dds_link_status_s> _dds_link_status_pub{ORB_ID(dds_link_status)};
+	dds_link_status_s _link_status{};
+	hrt_abstime _link_status_last{0};
+	uint32_t _session_count{0};
+	struct {
+		uint32_t wire_tx_bytes, wire_rx_bytes, wire_tx_frames, wire_rx_frames;
+		uint32_t tx_bytes[DDS_NUM_TX_TOPICS > 0 ? DDS_NUM_TX_TOPICS : 1];
+		uint32_t tx_samples[DDS_NUM_TX_TOPICS > 0 ? DDS_NUM_TX_TOPICS : 1];
+		uint32_t rx_bytes[DDS_NUM_RX_TOPICS > 0 ? DDS_NUM_RX_TOPICS : 1];
+		uint32_t rx_samples[DDS_NUM_RX_TOPICS > 0 ? DDS_NUM_RX_TOPICS : 1];
+	} _link_last{};
 
 	perf_counter_t _loop_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};
 	perf_counter_t _loop_interval_perf{perf_alloc(PC_INTERVAL, MODULE_NAME": cycle interval")};

@@ -59,6 +59,7 @@ set(msg_files
 	Cpuload.msg
 	DatamanRequest.msg
 	DatamanResponse.msg
+	DdsLinkStatus.msg
 	DebugArray.msg
 	DebugKeyValue.msg
 	DebugValue.msg

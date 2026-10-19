@@ -13,7 +13,18 @@
 @{
 import os
 
+# Link-usage bookkeeping (dds_link_status): topic names in array order and a
+# FNV-1a 32 hash of them so a log viewer can map array indices back to names.
+tx_topic_names = [pub['topic'] for pub in publications]
+rx_topic_names = [sub['topic'] for sub in subscriptions] + [sub['topic'] for sub in subscriptions_multi]
 
+def fnv1a_32(text):
+    h = 0x811c9dc5
+    for b in text.encode('utf-8'):
+        h = ((h ^ b) * 0x01000193) & 0xffffffff
+    return h
+
+topic_list_hash = fnv1a_32('\n'.join(tx_topic_names) + '\n#\n' + '\n'.join(rx_topic_names))
 }@
 
 #include <utilities.hpp>
@@ -25,6 +36,7 @@ import os
 #include <uORB/Publication.hpp>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/uORB.h>
+#include <uORB/topics/dds_link_status.h>
 @[for include in type_includes]@
 #include <uORB/ucdr/@(include).h>
 #include <uORB/topics/@(include).h>
@@ -33,6 +45,19 @@ import os
 // Minimum interval (ms) between uORB updates forwarded to DDS (/fmu/out/*).
 // 4ms ~= 250Hz.
 #define UXRCE_DEFAULT_POLL_INTERVAL_MS 4
+
+// Topic counts and name-list hash reported in dds_link_status (see DdsLinkStatus.msg)
+static constexpr uint8_t DDS_NUM_TX_TOPICS = @(len(tx_topic_names));
+static constexpr uint8_t DDS_NUM_RX_TOPICS = @(len(rx_topic_names));
+static constexpr uint32_t DDS_TOPIC_LIST_HASH = @(topic_list_hash)U;
+static_assert(DDS_NUM_TX_TOPICS <= dds_link_status_s::MAX_TOPICS, "too many publications for dds_link_status");
+static_assert(DDS_NUM_RX_TOPICS <= dds_link_status_s::MAX_TOPICS, "too many subscriptions for dds_link_status");
+
+static const char *const dds_rx_topic_names[DDS_NUM_RX_TOPICS > 0 ? DDS_NUM_RX_TOPICS : 1] = {
+@[for name in rx_topic_names]@
+	"@(name)",
+@[end for]@
+};
 
 typedef bool (*UcdrSerializeMethod)(const void* data, ucdrBuffer& buf, int64_t time_offset);
 
@@ -70,6 +95,8 @@ struct SendSubscription {
 	UcdrSerializeMethod ucdr_serialize_method;
 	uint64_t publish_interval_ms;
 	uint8_t orb_instance;
+	uint32_t num_bytes_sent; // serialized payload, for dds_link_status
+	uint32_t num_samples_sent;
 };
 
 // Subscribers for messages to send
@@ -84,7 +111,8 @@ struct SendTopicsSubs {
 			  ucdr_topic_size_@(pub['simple_base_type'])(),
 			  &ucdr_serialize_@(pub['simple_base_type']),
 			  @(pub['publish_interval_ms'] if pub['publish_interval_ms'] is not None else 'UXRCE_DEFAULT_POLL_INTERVAL_MS'), // ms; 0 = unlimited (rate limit disabled, queue drained)
-			  @(pub['instance'])
+			  @(pub['instance']),
+			  0, 0
 			},
 @[    end for]@
 	};
@@ -92,6 +120,7 @@ struct SendTopicsSubs {
 	px4_pollfd_struct_t fds[@(len(publications))] {};
 
 	uint32_t num_payload_sent{};
+	uint32_t num_samples_dropped{}; // output stream full, sample not sent
 
 	bool init(uxrSession *session, uxrStreamId reliable_out_stream_id, uxrStreamId reliable_in_stream_id, uxrStreamId best_effort_in_stream_id, uxrObjectId participant_id, const char *client_namespace);
 	void update(uxrSession *session, uxrStreamId reliable_out_stream_id, uxrStreamId best_effort_stream_id, uxrObjectId participant_id, const char *client_namespace);
@@ -169,8 +198,11 @@ void SendTopicsSubs::update(uxrSession *session, uxrStreamId reliable_out_stream
 						send_subscriptions[idx].ucdr_serialize_method(&topic_data, ub, time_offset_us);
 						needs_flush = true;
 						num_payload_sent += topic_size;
+						send_subscriptions[idx].num_bytes_sent += topic_size;
+						send_subscriptions[idx].num_samples_sent++;
 
 					} else {
+						num_samples_dropped++;
 						//PX4_ERR("Error uxr_prepare_output_stream UXR_INVALID_REQUEST_ID %s", send_subscriptions[idx].subscription.get_topic()->o_name);
 					}
 
@@ -218,6 +250,10 @@ struct RcvTopicsPubs {
 
 	uint32_t num_payload_received{};
 
+	// per incoming topic, in dds_rx_topic_names order (for dds_link_status)
+	uint32_t num_bytes_received[DDS_NUM_RX_TOPICS > 0 ? DDS_NUM_RX_TOPICS : 1] {};
+	uint32_t num_samples_received[DDS_NUM_RX_TOPICS > 0 ? DDS_NUM_RX_TOPICS : 1] {};
+
 	bool init(uxrSession *session, uxrStreamId reliable_out_stream_id, uxrStreamId reliable_in_stream_id, uxrStreamId best_effort_in_stream_id, uxrObjectId participant_id, const char *client_namespace);
 };
 
@@ -227,6 +263,14 @@ static void on_topic_update(uxrSession *session, uxrObjectId object_id, uint16_t
 {
 	RcvTopicsPubs *pubs = (RcvTopicsPubs *)args;
 	pubs->num_payload_received += length;
+
+	// Data readers are created with ids 0..N-1 (see RcvTopicsPubs::init) and offset as below
+	const unsigned rx_idx = object_id.id - ((65535U / 32U) + 1);
+
+	if (rx_idx < DDS_NUM_RX_TOPICS) {
+		pubs->num_bytes_received[rx_idx] += length;
+		pubs->num_samples_received[rx_idx]++;
+	}
 	const int64_t time_offset_us = session->time_offset / 1000; // ns -> us
 
 	switch (object_id.id) {

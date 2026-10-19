@@ -55,6 +55,77 @@ static constexpr uint8_t TIMESYNC_MAX_TIMEOUTS = 10;
 
 using namespace time_literals;
 
+// Wire-level byte counting for dds_link_status. The XRCE transport exposes its
+// send/receive functions through uxrCommunication; wrapping them sees every frame
+// (topic data, session, ping, time-sync, acknowledgements), which the per-topic
+// payload counters do not. Only one client instance runs, so file-scope state is fine.
+static struct {
+	send_msg_func send;
+	recv_msg_func recv;
+	bool serial;
+	uint32_t tx_bytes, rx_bytes, tx_frames, rx_frames, tx_errors;
+} g_wire{};
+
+// Bytes a message occupies on the wire. Serial framing (stream_framing_protocol.c)
+// adds a begin flag, 2 address bytes, 2 length bytes and a 2-byte CRC, and escapes
+// every 0x7E/0x7D (flag/escape) byte as two bytes. The CRC bytes can also need
+// escaping; that is at most 2 bytes per frame and is not counted. UDP adds the
+// 8-byte UDP and 20-byte IPv4 headers.
+static uint32_t wire_size(const uint8_t *buf, size_t len)
+{
+	if (!g_wire.serial) {
+		return len + 28;
+	}
+
+	uint32_t size = 7 + len;
+	const uint8_t len_lo = len & 0xFF;
+	const uint8_t len_hi = len >> 8;
+	size += (len_lo == 0x7E || len_lo == 0x7D) + (len_hi == 0x7E || len_hi == 0x7D);
+
+	for (size_t i = 0; i < len; i++) {
+		size += (buf[i] == 0x7E || buf[i] == 0x7D);
+	}
+
+	return size;
+}
+
+static bool counting_send_msg(void *instance, const uint8_t *buf, size_t len)
+{
+	const bool ok = g_wire.send(instance, buf, len);
+
+	if (ok) {
+		g_wire.tx_bytes += wire_size(buf, len);
+		g_wire.tx_frames++;
+
+	} else {
+		g_wire.tx_errors++;
+	}
+
+	return ok;
+}
+
+static bool counting_recv_msg(void *instance, uint8_t **buf, size_t *len, int timeout)
+{
+	const bool ok = g_wire.recv(instance, buf, len, timeout);
+
+	if (ok) {
+		g_wire.rx_bytes += wire_size(*buf, *len);
+		g_wire.rx_frames++;
+	}
+
+	return ok;
+}
+
+static void install_wire_counters(uxrCommunication *comm, bool serial)
+{
+	// Called after every transport (re)init, which resets comm to the library functions
+	g_wire.send = comm->send_msg;
+	g_wire.recv = comm->recv_msg;
+	g_wire.serial = serial;
+	comm->send_msg = counting_send_msg;
+	comm->recv_msg = counting_recv_msg;
+}
+
 #if defined(UXRCE_DDS_CLIENT_UDP)
 static void configure_udp_socket_nonblocking(int fd)
 {
@@ -154,6 +225,7 @@ bool UxrceddsClient::init()
 
 			_comm = &_transport_serial->comm;
 			_fd = fd;
+			install_wire_counters(_comm, true);
 
 			return true;
 		}
@@ -178,6 +250,7 @@ bool UxrceddsClient::init()
 
 			_comm = &_transport_udp->comm;
 			_fd = _transport_udp->platform.poll_fd.fd;
+			install_wire_counters(_comm, false);
 
 			configure_udp_socket_nonblocking(_fd);
 
@@ -225,6 +298,7 @@ bool UxrceddsClient::setupSession(uxrSession *session)
 	while (!should_exit() && !got_response) {
 		// Sending ping without initing a XRCE session
 		got_response = uxr_ping_agent_attempts(_comm, 1000, 1);
+		publishLinkStatus(); // keeps logging (connected = false) while the agent is absent
 	}
 
 	if (!got_response) {
@@ -387,6 +461,7 @@ bool UxrceddsClient::setupSession(uxrSession *session)
 	}
 
 	_connected = true;
+	_session_count++;
 	return true;
 }
 
@@ -408,6 +483,7 @@ void UxrceddsClient::deleteSession(uxrSession *session)
 	_connected = false;
 	_last_payload_tx_rate = 0;
 	_timesync.reset_filter();
+	publishLinkStatus(true); // log the disconnect immediately
 }
 
 UxrceddsClient::~UxrceddsClient()
@@ -497,6 +573,87 @@ void UxrceddsClient::calculateTxRxRate()
 		_last_num_payload_received = _pubs->num_payload_received;
 		_last_status_update = now;
 	}
+}
+
+void UxrceddsClient::publishLinkStatus(bool force)
+{
+	const hrt_abstime now = hrt_absolute_time();
+
+	if (_link_status_last == 0) {
+		// first call: start the averaging window, nothing to report yet
+		_link_status_last = now;
+		return;
+	}
+
+	if (!force && (now - _link_status_last < 1_s)) {
+		return;
+	}
+
+	const float dt = (now - _link_status_last) * 1e-6f;
+
+	if (dt <= 0.f) {
+		return;
+	}
+
+	_link_status_last = now;
+
+	// All counters are free-running uint32; unsigned subtraction handles wrap-around.
+	dds_link_status_s &st = _link_status;
+	st.transport = (_transport == Transport::Serial) ? dds_link_status_s::TRANSPORT_SERIAL : dds_link_status_s::TRANSPORT_UDP;
+	st.connected = _connected;
+	st.timesync_converged = _timesync_converged;
+	st.baudrate = (_transport == Transport::Serial) ? _baudrate : 0;
+	st.data_rate = st.baudrate / 10.f; // 8N1: 10 bits per byte
+
+	st.tx_rate = (g_wire.tx_bytes - _link_last.wire_tx_bytes) / dt;
+	st.rx_rate = (g_wire.rx_bytes - _link_last.wire_rx_bytes) / dt;
+	st.tx_frame_rate = (g_wire.tx_frames - _link_last.wire_tx_frames) / dt;
+	st.rx_frame_rate = (g_wire.rx_frames - _link_last.wire_rx_frames) / dt;
+	_link_last.wire_tx_bytes = g_wire.tx_bytes;
+	_link_last.wire_rx_bytes = g_wire.rx_bytes;
+	_link_last.wire_tx_frames = g_wire.tx_frames;
+	_link_last.wire_rx_frames = g_wire.rx_frames;
+
+	st.tx_send_errors = g_wire.tx_errors;
+	st.session_count = _session_count;
+	st.num_tx_topics = DDS_NUM_TX_TOPICS;
+	st.num_rx_topics = DDS_NUM_RX_TOPICS;
+	st.topic_list_hash = DDS_TOPIC_LIST_HASH;
+
+	float tx_payload = 0.f;
+	float rx_payload = 0.f;
+
+	if (_subs) {
+		st.tx_samples_dropped = _subs->num_samples_dropped;
+
+		for (unsigned i = 0; i < DDS_NUM_TX_TOPICS; i++) {
+			const SendSubscription &sub = _subs->send_subscriptions[i];
+			const uint32_t bytes = sub.num_bytes_sent - _link_last.tx_bytes[i];
+			const uint32_t samples = sub.num_samples_sent - _link_last.tx_samples[i];
+			_link_last.tx_bytes[i] = sub.num_bytes_sent;
+			_link_last.tx_samples[i] = sub.num_samples_sent;
+			st.topic_tx_rate[i] = bytes / dt;
+			st.topic_tx_sample_rate[i] = math::min(samples / dt + 0.5f, 65535.f);
+			tx_payload += st.topic_tx_rate[i];
+		}
+	}
+
+	if (_pubs) {
+		for (unsigned i = 0; i < DDS_NUM_RX_TOPICS; i++) {
+			const uint32_t bytes = _pubs->num_bytes_received[i] - _link_last.rx_bytes[i];
+			const uint32_t samples = _pubs->num_samples_received[i] - _link_last.rx_samples[i];
+			_link_last.rx_bytes[i] = _pubs->num_bytes_received[i];
+			_link_last.rx_samples[i] = _pubs->num_samples_received[i];
+			st.topic_rx_rate[i] = bytes / dt;
+			st.topic_rx_sample_rate[i] = math::min(samples / dt + 0.5f, 65535.f);
+			rx_payload += st.topic_rx_rate[i];
+		}
+	}
+
+	st.tx_payload_rate = tx_payload;
+	st.rx_payload_rate = rx_payload;
+	st.timestamp = now;
+	_dds_link_status_pub.publish(st);
 }
 
 void UxrceddsClient::handleMessageFormatRequest()
@@ -751,6 +908,7 @@ void UxrceddsClient::run()
 
 			// Calculate the payload tx/rx rate for connectivity monitoring
 			calculateTxRxRate();
+			publishLinkStatus();
 
 			// Check if there is still connectivity with the agent
 			checkConnectivity(&session);
@@ -1007,6 +1165,40 @@ int UxrceddsClient::print_status()
 	if (_connected) {
 		PX4_INFO("Payload tx:          %i B/s", _last_payload_tx_rate);
 		PX4_INFO("Payload rx:          %i B/s", _last_payload_rx_rate);
+	}
+
+	// Link usage from the last dds_link_status sample
+	const dds_link_status_s &st = _link_status;
+
+	if (st.timestamp != 0) {
+		const float cap = st.data_rate;
+		PX4_INFO("Link capacity:       %.0f B/s%s", (double)cap, cap > 0.f ? "" : " (unknown)");
+		PX4_INFO("Wire tx:             %.0f B/s (%.1f%%), %.0f frames/s", (double)st.tx_rate,
+			 (double)(cap > 0.f ? 100.f * st.tx_rate / cap : 0.f), (double)st.tx_frame_rate);
+		PX4_INFO("Wire rx:             %.0f B/s (%.1f%%), %.0f frames/s", (double)st.rx_rate,
+			 (double)(cap > 0.f ? 100.f * st.rx_rate / cap : 0.f), (double)st.rx_frame_rate);
+		PX4_INFO("Send errors %u, samples dropped %u, sessions %u", (unsigned)st.tx_send_errors,
+			 (unsigned)st.tx_samples_dropped, (unsigned)st.session_count);
+
+		if (_subs) {
+			PX4_INFO_RAW("  tx topic                                    B/s     Hz\n");
+
+			for (unsigned i = 0; i < DDS_NUM_TX_TOPICS; i++) {
+				if (st.topic_tx_sample_rate[i] > 0) {
+					PX4_INFO_RAW("  %-40s %7.0f %6u\n", _subs->send_subscriptions[i].topic, (double)st.topic_tx_rate[i],
+						     (unsigned)st.topic_tx_sample_rate[i]);
+				}
+			}
+		}
+
+		PX4_INFO_RAW("  rx topic                                    B/s     Hz\n");
+
+		for (unsigned i = 0; i < DDS_NUM_RX_TOPICS; i++) {
+			if (st.topic_rx_sample_rate[i] > 0) {
+				PX4_INFO_RAW("  %-40s %7.0f %6u\n", dds_rx_topic_names[i], (double)st.topic_rx_rate[i],
+					     (unsigned)st.topic_rx_sample_rate[i]);
+			}
+		}
 	}
 
 	PX4_INFO("timesync converged: %s", _timesync.sync_converged() ? "true" : "false");
